@@ -1,0 +1,12 @@
+# Generated build output
+/build/
+
+# Legacy or accidentally generated root-level artifacts
+*.o
+*.elf
+*.bin
+*.elf.txt
+
+# Editor and OS metadata
+*~
+.DS_Store
