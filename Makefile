@@ -1,26 +1,36 @@
-SRC_DIR ?= ./
-OBJ_DIR ?= ./
-SOURCES ?= $(shell find $(SRC_DIR) -name '*.c' -or -name '*.S')
-OBJECTS ?= $(addsuffix .o, $(basename $(notdir $(SOURCES))))
-LINKER ?= $(SRC_DIR)/dtekv-script.lds
+SRC_DIR ?= src
+LIB_DIR ?= lib
+OBJ_DIR ?= build
+SOURCES ?= $(shell find $(SRC_DIR) $(LIB_DIR) -name '*.c' -or -name '*.S')
+OBJECTS ?= $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(basename $(notdir $(SOURCES)))))
+LINKER ?= dtekv-script.lds
+
+VPATH := $(SRC_DIR):$(LIB_DIR)
 
 TOOLCHAIN ?= riscv32-unknown-elf-
-CFLAGS ?= -Wall -nostdlib -O3 -mabi=ilp32 -march=rv32imzicsr -fno-builtin
+CFLAGS ?= -Wall -nostdlib -O3 -mabi=ilp32 -march=rv32imzicsr -fno-builtin -Iinclude -Ilib
 
+.PHONY: build clean run
+build: $(OBJ_DIR)/main.bin
 
-build: clean main.bin
+$(OBJ_DIR)/%.o: %.c
+	@mkdir -p $(OBJ_DIR)
+	$(TOOLCHAIN)gcc -c $(CFLAGS) $< -o $@
 
-main.elf: 
-	$(TOOLCHAIN)gcc -c $(CFLAGS) $(SOURCES)
-	$(TOOLCHAIN)ld -o $@ -T $(LINKER) $(filter-out boot.o, $(OBJECTS)) softfloat.a
+$(OBJ_DIR)/%.o: %.S
+	@mkdir -p $(OBJ_DIR)
+	$(TOOLCHAIN)gcc -c $(CFLAGS) $< -o $@
 
-main.bin: main.elf
+$(OBJ_DIR)/main.elf: $(OBJECTS) $(LINKER) $(LIB_DIR)/softfloat.a
+	cd $(OBJ_DIR) && $(TOOLCHAIN)ld -o main.elf -T ../$(LINKER) $(filter-out boot.o, $(notdir $(OBJECTS))) ../$(LIB_DIR)/softfloat.a
+
+$(OBJ_DIR)/main.bin: $(OBJ_DIR)/main.elf
 	$(TOOLCHAIN)objcopy --output-target binary $< $@
 	$(TOOLCHAIN)objdump -D $< > $<.txt
 
 clean:
-	rm -f *.o *.elf *.bin *.txt
+	rm -f $(OBJ_DIR)/*.o $(OBJ_DIR)/*.elf $(OBJ_DIR)/*.bin $(OBJ_DIR)/*.txt
 
 TOOL_DIR ?= ./tools
-run: main.bin
-	make -C $(TOOL_DIR) "FILE_TO_RUN=$(CURDIR)/$<"
+run: $(OBJ_DIR)/main.bin
+	$(MAKE) -C $(TOOL_DIR) "FILE_TO_RUN=$(CURDIR)/$<"
