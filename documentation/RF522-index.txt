@@ -1,0 +1,20 @@
+MFRC522 DOKUMENTATIONSINDEX FÖR DE10-LITE SPI-PROJEKT
+
+1.0 KRITISKT ATT LÄSA INNAN START (SPI & HÅRDVARA)
+1.1 Sid 6-7 (Tabell 3): Pin-konfiguration och anslutningar (NSS, SCK, MOSI, MISO).
+1.2 Sid 10-11: SPI-protokollets struktur och klockans flanker.
+1.3 Sid 15-16 (Tabell 14): Adressbyten (formatering av den första byten: R/W-bit och adress).
+
+2.0 REFERENSMATERIAL UNDER PROGRAMMERINGEN
+2.1 Sid 36-37 (Tabell 20): Karta över alla 64 adresser (hex-koder).
+2.2 Sid 38-60: Detaljerade registerbeskrivningar (fokus på CommandReg, ComIrqReg, FIFODataReg).
+2.3 Sid 70-73: Kommando-biblioteket (fokus på Transceive-kommandot).
+
+3.0 DIAGRAM FÖR FELSÖKNING
+3.1 Sid 80: SPI Timing Diagram (visuellt för klockpulser och data, referens för oscilloskop).
+3.2 Sid 79 (Tabell 154): Tidsbegränsningar (minsta tillåtna fördröjningar för bit-banging i C).
+
+4.0 ÖVERKURS OCH IRRELEVANT (IGNORERA)
+4.1 Sid 12-14, 17-23: I2C och UART-protokoll.
+4.2 Sid 24-28: Analog konfiguration och RF-fysik.
+4.3 Sid 64-69, 82-87: Testregister, kalibrering och interna testbussar.
