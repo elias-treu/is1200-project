@@ -1,21 +1,22 @@
-#include "timer.h"
 #include <stdint.h>
 
-extern void print(const char *);
+#include "timer.h"
+
+extern void print(const char*);
 
 // GPIO addresses, pins 0-31
-#define GPIO_DATA ((volatile uint32_t *)0x040000e0)
-#define GPIO_DIR ((volatile uint32_t *)0x040000e4)
+#define GPIO_DATA ((volatile uint32_t*)0x040000e0)
+#define GPIO_DIR ((volatile uint32_t*)0x040000e4)
 
-#define RS_BIT (1 << 10) // GPIO pin 10, physical pin 13
-#define E_BIT (1 << 11)  // GPIO pin 11, physical pin 14
-#define DATA_BITS_MASK                                                         \
-  (0xF << 12) // Mask for data bits, setting GPIO_12-15, physical pins 15-18
+#define RS_BIT (1 << 10)  // GPIO pin 10, physical pin 13
+#define E_BIT (1 << 11)   // GPIO pin 11, physical pin 14
+#define DATA_BITS_MASK \
+  (0xF << 12)  // Mask for data bits, setting GPIO_12-15, physical pins 15-18
 #define GPIO_10_15 (RS_BIT | E_BIT | DATA_BITS_MASK)
 
 // Sends a 4-bit nibble. If is_data is 1, nibble is sent as data. If 0, it is
 // sent as a command
-void send_nibble(uint8_t nibble, int is_data) {
+void lcd_send_nibble(uint8_t nibble, int is_data) {
   uint32_t gpio_reg_value = *GPIO_DATA;
 
   // Clear GPIO 10 to 15
@@ -41,18 +42,18 @@ void send_nibble(uint8_t nibble, int is_data) {
 
 // Sends an 8 bit command in 4-bit mode by splitting them into two nibbles that
 // get sent one after another
-void send_byte(uint8_t byte, int is_data) {
+void lcd_send_byte(uint8_t byte, int is_data) {
   uint8_t high_nibble = byte >> 4 & 0x0F;
   uint8_t low_nibble = byte & 0x0F;
 
-  send_nibble(high_nibble, is_data);
-  send_nibble(low_nibble, is_data);
+  lcd_send_nibble(high_nibble, is_data);
+  lcd_send_nibble(low_nibble, is_data);
 }
 
 // Sends a full 8-bit command. Handles longer delays for clear and home
 // commands
-void send_command(uint8_t command) {
-  send_byte(command, 0);
+void lcd_send_command(uint8_t command) {
+  lcd_send_byte(command, 0);
   // Clear and Home commands both take about 1.53ms to execute, and are
   // the only commands that take longer than a couple microseconds.
   if (command == 0x01 || command == 0x02) {
@@ -60,16 +61,16 @@ void send_command(uint8_t command) {
   }
 }
 
-void write_char(char c) { send_byte((uint8_t)c, 1); }
+void lcd_write_char(char c) { lcd_send_byte((uint8_t)c, 1); }
 
-void write_string(char *str) {
+void lcd_write_string(char* str) {
   while (*str != 0) {
-    write_char(*str);
+    lcd_write_char(*str);
     str++;
   }
 }
 
-void set_cursor(uint8_t line, uint8_t index) {
+void lcd_set_cursor(uint8_t line, uint8_t index) {
   // Line 1 starts at 0x00, line 2 starts at 0x40
   int address = 0;
   if (line == 0) {
@@ -78,10 +79,10 @@ void set_cursor(uint8_t line, uint8_t index) {
     address = 0x40 + index;
   }
   // Set DDRAM address command
-  send_command(0x80 | address);
+  lcd_send_command(0x80 | address);
 }
 
-void clear_screen() { send_command(0x01); }
+void lcd_clear() { lcd_send_command(0x01); }
 
 void lcd_init() {
   // Follows 4-bit initialization procedure described in LCD documentation
@@ -95,29 +96,29 @@ void lcd_init() {
   delay(50);
 
   // Resynchronization
-  send_nibble(0x03, 0);
+  lcd_send_nibble(0x03, 0);
   // Wait > 4.1ms
   delay(5);
 
-  send_nibble(0x03, 0);
+  lcd_send_nibble(0x03, 0);
   // Wait > 100 us
   delay(1);
 
-  send_nibble(0x03, 0);
+  lcd_send_nibble(0x03, 0);
   // Wait > 150 us
   delay(1);
 
   // The screen is now in 8-bit mode
   // Send 0x2 in 8-bit mode, setting the screen to 4-bit mode
-  send_nibble(0x02, 0);
+  lcd_send_nibble(0x02, 0);
   delay(1);
 
   // Function set command: 4-bit mode, 2 lines, 5x8 font
-  send_command(0x28);
+  lcd_send_command(0x28);
   // Display ON/OFF command: Display ON, cursor OFF, blink OFF
-  send_command(0x0C);
-  clear_screen();
+  lcd_send_command(0x0C);
+  lcd_clear();
   // Entry Mode Set command: Increment cursor, Shift off
-  send_command(0x06);
+  lcd_send_command(0x06);
   print("Completed LCD initialization.\n");
 }
