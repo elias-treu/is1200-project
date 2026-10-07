@@ -1,15 +1,28 @@
 #include <stdint.h>
 
 #include "database.h"
+#include "dtekv-lib.h"
+#include "rfid.h"
 #include "screen.h"
+#include "ui.h"
 
-extern void print(const char*);
+extern void print_dec(unsigned int);
 
 void handle_interrupt(unsigned cause) { (void)cause; }
+
+int get_btn() {
+  volatile int* address = (volatile int*)0x040000d0;
+  // returns an integer with all but the LSB set to 0.
+  return *address & 0x1;
+}
 
 void boot_setup() {
   // clear database
   db_init();
+  // initialize RFID
+  rfid_init();
+  // initialize LCD
+  lcd_init();
 
   lcd_clear();
   lcd_set_cursor(0, 0);
@@ -35,16 +48,43 @@ void boot_setup() {
 }
 
 int main() {
-  lcd_init();
-
   lcd_set_cursor(0, 0);
   lcd_write_string("TEST STRING!");
 
   lcd_set_cursor(1, 0);
   lcd_write_string("LOWER STRING!");
   print("end of main()\n");
-
   boot_setup();
 
-  while (1);
+  while (1) {
+    uint8_t card_uid[4];
+
+    if (rfid_request() != 0) {
+      if (rfid_anticoll(card_uid)) {
+        // Successfully read a card!
+        // card_uid[0..3] now holds the unique 4-byte ID (e.g., DE AD BE EF)
+      }
+    }
+    for (int i = 0; i < 4; i++) {
+      print_dec(card_uid[i]);
+      print(" ");
+    }
+  }
+  int menu = 0;
+  while (1) {
+    if (get_btn() == 1) {
+      menu = (menu + 1) % 3;
+      switch (menu) {
+        case 0:
+          add_user();
+          break;
+        case 1:
+          remove_user();
+          break;
+        case 2:
+          edit_user();
+          break;
+      }
+    }
+  };
 }
