@@ -48,43 +48,45 @@ void boot_setup() {
 }
 
 int main() {
-  lcd_set_cursor(0, 0);
-  lcd_write_string("TEST STRING!");
-
-  lcd_set_cursor(1, 0);
-  lcd_write_string("LOWER STRING!");
-  print("end of main()\n");
   boot_setup();
 
-  while (1) {
-    uint8_t card_uid[4];
+  lcd_clear();
+  lcd_write_string("Scan card");
 
-    if (rfid_request() != 0) {
-      if (rfid_anticoll(card_uid)) {
-        // Successfully read a card!
-        // card_uid[0..3] now holds the unique 4-byte ID (e.g., DE AD BE EF)
-      }
-    }
-    for (int i = 0; i < 4; i++) {
-      print_dec(card_uid[i]);
-      print(" ");
-    }
-  }
-  int menu = 0;
+  int menu = 0;  // 0 = scan, 1 = add, 2 = remove, 3 = edit
   while (1) {
     if (get_btn() == 1) {
-      menu = (menu + 1) % 3;
+      menu = (menu + 1) % 4;
       switch (menu) {
         case 0:
-          add_user();
+          lcd_clear();
+          lcd_write_string("Scan card");
           break;
         case 1:
-          remove_user();
+          add_user();
           break;
         case 2:
+          remove_user();
+          break;
+        case 3:
           edit_user();
           break;
       }
     }
-  };
+
+    // Default mode: scan for RFID tags
+    if (menu == 0) {
+      uint8_t card_uid[4];
+      if (rfid_request() != 0) {
+        if (rfid_anticoll(card_uid)) {
+          // Successfully read a card!
+          // card_uid[0..3] now holds the unique 4-byte ID (e.g., DE AD BE EF)
+          for (int i = 0; i < 4; i++) {
+            print_dec(card_uid[i]);
+            print(" ");
+          }
+        }
+      }
+    }
+  }
 }
