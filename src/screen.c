@@ -63,11 +63,12 @@ void lcd_send_command(uint8_t command) {
 
 void lcd_write_char(char c) { lcd_send_byte((uint8_t)c, 1); }
 
-void lcd_write_string(char* str) {
+void lcd_write_string(char* str, int delay_ms) {
   while (*str != 0) {
     lcd_write_char(*str);
     str++;
   }
+  delay(delay_ms);
 }
 
 void lcd_set_cursor(uint8_t line, uint8_t index) {

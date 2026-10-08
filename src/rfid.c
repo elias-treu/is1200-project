@@ -154,6 +154,7 @@ uint8_t rfid_anticoll(uint8_t* uid_buffer) {
   // 8. Wait for card response or timeout
   int timeout = 2000;
   while (timeout > 0) {
+    print("coll_read");
     uint8_t irq = rfid_read_reg(0x04);
     if (irq & 0x21) break;  // RxIRq or TimerIRq
     for (volatile int d = 0; d < 100; d++);

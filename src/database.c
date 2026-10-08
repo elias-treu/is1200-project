@@ -12,15 +12,12 @@ void db_init() { user_count = 0; }
 
 // Checks if user exists in database and returns its index if it does, otherwise
 // returns -1
-int db_find_user(const uint8_t* uid, int uid_len) {
+int db_find_user(const uint8_t* uid) {
   for (int i = 0; i < user_count; i++) {
-    if (database[i].uid_len != uid_len) {
-      continue;
-    }
     // assume match
     int match = 1;
     // compare byte by byte
-    for (int j = 0; j < uid_len; j++) {
+    for (int j = 0; j < 4; j++) {
       if (database[i].uid[j] != uid[j]) {
         // declar not matching and escape for loop
         match = 0;
@@ -37,8 +34,8 @@ int db_find_user(const uint8_t* uid, int uid_len) {
 
 // Looks up a user and returns a pointer to the user if found,
 // otherwise returns NULL
-User* db_get_user(const uint8_t* uid, int uid_len) {
-  int index = db_find_user(uid, uid_len);
+User* db_get_user(const uint8_t* uid) {
+  int index = db_find_user(uid);
   if (index < 0) {
     return NULL;
   }
@@ -49,21 +46,18 @@ User* db_get_user(const uint8_t* uid, int uid_len) {
 // Guarantee null termination - Success
 // -1 - Database full
 // -2 - User already exists
-int db_add_user(const uint8_t* uid, uint8_t uid_len, const char* name,
-                uint8_t role) {
+int db_add_user(const uint8_t* uid, const char* name, uint8_t role) {
   if (user_count >= MAX_USERS) {
     return -1;
   }
 
-  if (db_find_user(uid, uid_len) >= 0) {
+  if (db_find_user(uid) >= 0) {
     return -2;
   }
 
-  for (int i = 0; i < uid_len; i++) {
+  for (int i = 0; i < 4; i++) {
     database[user_count].uid[i] = uid[i];
   }
-
-  database[user_count].uid_len = uid_len;
 
   int i = 0;
   while (name[i] != '\0' && i < 16) {
@@ -82,34 +76,31 @@ int db_add_user(const uint8_t* uid, uint8_t uid_len, const char* name,
 // Removes user from database.
 // Return 0 on successful removal
 // Returns -1 if user is not in database
-int db_remove_user(const uint8_t* uid, int uid_len) {
-  int index = db_find_user(uid, uid_len);
+int db_remove_user(const uint8_t* uid) {
+  int index = db_find_user(uid);
   if (index < 0) {
     return -1;
   }
 
-  for (int i = index; i < user_count; i++) {
-    // Every field in a user struct is copied field by field to avoid the
-    // compilar using memcpy which the files in dtekv-lib does not support.
-    // database[i] = database[i + 1];
-    // everything in this if statement below this line replaces the line
-    // above.
-    database[i].uid_len = database[i + 1].uid_len;
+  // Shift remaining users left without reading past the last occupied slot.
+  for (int i = index; i < user_count - 1; i++) {
     database[i].role = database[i + 1].role;
 
-    // Copy UID array
-    for (int k = 0; k < database[i + 1].uid_len; k++) {
+    for (int k = 0; k < 4; k++) {
       database[i].uid[k] = database[i + 1].uid[k];
     }
-
-    // Copy Name string
-    int k = 0;
-    while (database[i + 1].name[k] != '\0' && k < 16) {
+    for (int k = 0; k < 17; k++) {
       database[i].name[k] = database[i + 1].name[k];
-      k++;
     }
   }
 
   user_count--;
+  database[user_count].role = 0;
+  for (int k = 0; k < 4; k++) {
+    database[user_count].uid[k] = 0;
+  }
+  for (int k = 0; k < 17; k++) {
+    database[user_count].name[k] = '\0';
+  }
   return 0;
 }

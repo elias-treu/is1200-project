@@ -4,16 +4,25 @@
 #include "dtekv-lib.h"
 #include "rfid.h"
 #include "screen.h"
+#include "timer.h"
 #include "ui.h"
 
+#define BUTTON_BASE ((volatile uint32_t*)0x040000d0)
+#define GPIO_DIR ((volatile uint32_t*)0x040000e4)
+#define GPIO_INPUT_BUTTONS ((1u << 26) | (1u << 27))
+
 extern void print_dec(unsigned int);
+extern void enable_interrupt();
 
-void handle_interrupt(unsigned cause) { (void)cause; }
+static volatile int menu_requested;
 
-int get_btn() {
-  volatile int* address = (volatile int*)0x040000d0;
-  // returns an integer with all but the LSB set to 0.
-  return *address & 0x1;
+void handle_interrupt(unsigned cause) {
+  if (cause == 18) {
+    BUTTON_BASE[3] = 1;
+    if (*BUTTON_BASE == 1) {
+      menu_requested = 1;
+    }
+  }
 }
 
 void boot_setup() {
@@ -24,67 +33,67 @@ void boot_setup() {
   // initialize LCD
   lcd_init();
 
+  // Receive admin info.
   lcd_clear();
   lcd_set_cursor(0, 0);
-  lcd_write_string("Tap Admin card");
+  lcd_write_string("Tap Admin card", 0);
 
-  uint8_t admin_uid[7];
-  uint8_t admin_uid_len = 0;
+  uint8_t admin_uid[4];
 
-  // Get RFID from card
+  while (1) {
+    if (rfid_request() != 0) {
+      if (rfid_anticoll(admin_uid)) {
+        break;
+      }
+    }
+  }
 
-  // Dummy values for testing until RFID code is ready
-  admin_uid[0] = 0xAA;
-  admin_uid[1] = 0xBB;
-  admin_uid[2] = 0xCC;
-  admin_uid[3] = 0xDD;
-  admin_uid_len = 4;
-
-  // Add user as admin
-  db_add_user(admin_uid, admin_uid_len, "Admin", 1);
+  db_add_user(admin_uid, "admin", 1);
 
   lcd_clear();
-  lcd_write_string("Admin Set!");
+  lcd_write_string("Admin Set!", 1000);
 }
 
 int main() {
+  // Configure GPIO 26 and GPIO 27 as inputs.
+  *GPIO_DIR &= ~GPIO_INPUT_BUTTONS;
+
+  BUTTON_BASE[3] = 1;
+  BUTTON_BASE[2] |= 1;
+
   boot_setup();
+  enable_interrupt();
 
   lcd_clear();
-  lcd_write_string("Scan card");
+  lcd_write_string("Scan card", 0);
 
-  int menu = 0;  // 0 = scan, 1 = add, 2 = remove, 3 = edit
   while (1) {
-    if (get_btn() == 1) {
-      menu = (menu + 1) % 4;
-      switch (menu) {
-        case 0:
-          lcd_clear();
-          lcd_write_string("Scan card");
-          break;
-        case 1:
-          add_user();
-          break;
-        case 2:
-          remove_user();
-          break;
-        case 3:
-          edit_user();
-          break;
-      }
+    if (menu_requested) {
+      menu_requested = 0;
+      menu_selector();
+      lcd_clear();
+      lcd_write_string("Scan card", 0);
     }
 
     // Default mode: scan for RFID tags
-    if (menu == 0) {
-      uint8_t card_uid[4];
-      if (rfid_request() != 0) {
-        if (rfid_anticoll(card_uid)) {
-          // Successfully read a card!
-          // card_uid[0..3] now holds the unique 4-byte ID (e.g., DE AD BE EF)
-          for (int i = 0; i < 4; i++) {
-            print_dec(card_uid[i]);
-            print(" ");
-          }
+    uint8_t card_uid[4];
+    if (rfid_request() != 0) {
+      if (rfid_anticoll(card_uid)) {
+        // Successfully read a card!
+        // card_uid[0..3] now holds the unique 4-byte ID (e.g., DE AD BE EF)
+        if (db_find_user(card_uid) >= 0) {
+          lcd_clear();
+          lcd_write_string("Welcome, ", 0);
+          lcd_set_cursor(1, 0);
+          lcd_write_string(db_get_user(card_uid)->name, 1000);
+          lcd_clear();
+          lcd_write_string("Scan card", 0);
+        } else {
+          lcd_clear();
+          lcd_write_string("Unknown card", 1000);
+          delay(1000);
+          lcd_clear();
+          lcd_write_string("Scan card", 0);
         }
       }
     }
