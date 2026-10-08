@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 typedef struct {
-  uint8_t uid[4];  // This RFID implementation supports 4-byte UIDs
+  uint8_t uid[4];  // 4-byte UIDs
   char name[17];   // 17 bytes for 16 byte name + null character
   uint8_t role;    // 1 byte for Admin vs User
 } User;

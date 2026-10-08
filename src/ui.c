@@ -1,3 +1,5 @@
+// Mostly implemented by Elias Treutiger, reviewed with Erik Forsberg
+
 #include <stdint.h>
 
 #include "database.h"
@@ -6,16 +8,18 @@
 #include "screen.h"
 #include "timer.h"
 
+// Adresses
 #define GPIO_DATA ((volatile uint32_t*)0x040000e0)
+
+// Button bit adresses
 #define BUTTON_1_BIT 26
 #define BUTTON_2_BIT 27
 
 int menu = 0;
 
-int get_btn() { return (*GPIO_DATA >> BUTTON_1_BIT) & 0x1; }
+int button_1() { return (*GPIO_DATA >> BUTTON_1_BIT) & 0x1; }
 
-// GPIO bit 27 is used to pick a role while editing a user.
-static int get_role_btn() { return (*GPIO_DATA >> BUTTON_2_BIT) & 0x1; }
+static int button_2() { return (*GPIO_DATA >> BUTTON_2_BIT) & 0x1; }
 
 // Blocks until a card is read
 static void wait_for_card(uint8_t* uid) {
@@ -23,19 +27,18 @@ static void wait_for_card(uint8_t* uid) {
   }
 }
 
-// Returns 1 for button 1 and 2 for button 2. Waits for release so one
-// physical press is handled only once.
+// Returns 1 for button 1 and 2 for button 2 on release.
 static int wait_for_button(void) {
   while (1) {
-    if (get_btn()) {
-      while (get_btn()) {
+    if (button_1()) {
+      while (button_1()) {
         delay(10);
       }
       print("GPIO 26 button pressed\n");
       return 1;
     }
-    if (get_role_btn()) {
-      while (get_role_btn()) {
+    if (button_2()) {
+      while (button_2()) {
         delay(10);
       }
       print("GPIO 27 button pressed\n");
@@ -58,6 +61,7 @@ static int scan_admin() {
   return user != 0 && user->role == 1;
 }
 
+// Adds a user to database
 void add_user() {
   static char* names[] = {"name1", "name2", "name3", "name4", "name5"};
   int name_index = 0;
@@ -69,18 +73,15 @@ void add_user() {
   lcd_set_cursor(1, 0);
   lcd_write_string("Scan card", 0);
 
+  // Retrieve uid from scanned card
   uint8_t uid[4];
   wait_for_card(uid);
 
+  // Check if user already exists
   if (db_find_user(uid) >= 0) {
     lcd_clear();
     lcd_write_string("User exists", 1000);
     return;
-  }
-
-  // Do not treat the button press that entered this menu as a selection.
-  while (get_btn() || get_role_btn()) {
-    delay(10);
   }
 
   lcd_clear();
@@ -89,8 +90,10 @@ void add_user() {
   lcd_set_cursor(1, 0);
   lcd_write_string(names[name_index], 0);
 
+  // Cycles between the names in the names array
   while (1) {
     if (wait_for_button() == 1) {
+      // Loops through the names in the names array
       name_index = (name_index + 1) % 5;
       lcd_clear();
       lcd_set_cursor(0, 0);
@@ -108,6 +111,7 @@ void add_user() {
   lcd_set_cursor(1, 0);
   lcd_write_string("0", 0);
 
+  // Cycle between admin mode and regular mode
   while (1) {
     if (wait_for_button() == 1) {
       role = !role;
@@ -121,11 +125,13 @@ void add_user() {
     }
   }
 
+  // Create the user and add to database
   db_add_user(uid, names[name_index], role);
   lcd_clear();
   lcd_write_string("User added", 1000);
 }
 
+// Remove a user from the database
 void remove_user() {
   lcd_clear();
   lcd_set_cursor(0, 0);
@@ -133,10 +139,12 @@ void remove_user() {
   lcd_set_cursor(1, 0);
   lcd_write_string("Scan card", 0);
 
+  // Retrieve uid from card scan
   uint8_t uid[4];
   wait_for_card(uid);
 
   lcd_clear();
+  // If user is found in database, remove it
   if (db_remove_user(uid) == 0) {
     lcd_write_string("User removed", 1000);
   } else {
@@ -144,6 +152,7 @@ void remove_user() {
   }
 }
 
+// Edit a user's admin status
 void edit_user() {
   lcd_clear();
   lcd_set_cursor(0, 0);
@@ -159,11 +168,6 @@ void edit_user() {
     lcd_clear();
     lcd_write_string("User not found", 1000);
     return;
-  }
-
-  // Do not treat the button press that entered this menu as a selection.
-  while (get_btn() || get_role_btn()) {
-    delay(10);
   }
 
   int role = user->role ? 1 : 0;
@@ -196,6 +200,7 @@ void menu_selector() {
   static char* menu_strings[] = {"Add User", "Remove User", "Edit User",
                                  "Exit"};
 
+  // Check if user is admin, and exit if not.
   if (!scan_admin()) {
     lcd_clear();
     lcd_write_string("Not admin", 1000);
@@ -206,7 +211,7 @@ void menu_selector() {
     lcd_clear();
     lcd_write_string(menu_strings[menu], 0);
 
-    // Button 1 cycles through the menu; button 2 confirms the selection.
+    // Button 1 cycles through the menu and button 2 confirms the selection.
     while (1) {
       if (wait_for_button() == 1) {
         menu = (menu + 1) % 4;

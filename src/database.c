@@ -1,3 +1,5 @@
+// Mostly implemented by Erik Forsberg, reviewed with Elias Treutiger
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -43,7 +45,7 @@ User* db_get_user(const uint8_t* uid) {
 }
 
 // Adds a user to database and returns a status code.
-// Guarantee null termination - Success
+// Guarantee null termination
 // -1 - Database full
 // -2 - User already exists
 int db_add_user(const uint8_t* uid, const char* name, uint8_t role) {
@@ -82,7 +84,7 @@ int db_remove_user(const uint8_t* uid) {
     return -1;
   }
 
-  // Shift remaining users left without reading past the last occupied slot.
+  // Shift remaining users left without reading past the last occupied slot
   for (int i = index; i < user_count - 1; i++) {
     database[i].role = database[i + 1].role;
 
@@ -95,6 +97,7 @@ int db_remove_user(const uint8_t* uid) {
   }
 
   user_count--;
+  // Clear the last user's data
   database[user_count].role = 0;
   for (int k = 0; k < 4; k++) {
     database[user_count].uid[k] = 0;

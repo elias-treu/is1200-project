@@ -1,9 +1,10 @@
+// Co-programmed by Erik Forsberg and Elias Treutiger
+
 #include <stdint.h>
 
 #include "rfid.h"
 #include "timer.h"
 
-extern void print(const char* str);
 // ADDRESSES
 
 // GPIO addresses, pins 0-31
@@ -25,8 +26,10 @@ static void set_mosi_pin(uint8_t value) {
   }
 }
 
+// Read MISO bit
 static uint8_t read_miso_pin(void) { return (*GPIO_DATA >> GPIO_MISO) & 1; }
 
+// Set SCK pin to value (0 or 1)
 static void set_sck_pin(uint8_t value) {
   if (value) {
     *GPIO_DATA |= (1 << GPIO_SCK);
@@ -35,6 +38,8 @@ static void set_sck_pin(uint8_t value) {
   }
 }
 
+// Set NSS pin to value (0 or 1)
+// NSS is the chip select pin, active low
 static void set_nss_pin(uint8_t value) {
   if (value) {
     *GPIO_DATA |= (1 << GPIO_NSS);
@@ -63,9 +68,11 @@ static uint8_t spi_transfer(uint8_t byte_out) {
     // Pulse clock low, prompting reader to change MISO
     set_sck_pin(0);
   }
+  // Return the byte read from MISO
   return byte_in;
 }
 
+// Write an 8 bit value to a register
 void rfid_write_reg(uint8_t reg, uint8_t value) {
   set_nss_pin(0);  // Select chip (active low)
 
@@ -88,6 +95,7 @@ uint8_t rfid_read_reg(uint8_t reg) {
   return value;
 }
 
+// Initialize the RFID reader
 void rfid_init(void) {
   // Set direction of MISO to input
   *GPIO_DIR &= ~(1 << GPIO_MISO);
@@ -101,6 +109,7 @@ void rfid_init(void) {
   *GPIO_DATA &= ~(1 << GPIO_SCK);
 
   delay(1);
+  // Initialization procedure as specified in the datasheet
   // SoftReset routine 0xf
   rfid_write_reg(0x01, 0x0f);
 
@@ -114,7 +123,7 @@ void rfid_init(void) {
 
   // Modulation & CRC Settings for ISO 14443A
   rfid_write_reg(0x15,
-                 0x40);  // TxASKReg: Force100ASK = 1 (Required for MIFARE cards
+                 0x40);  // Enable 100% ASK
 
   rfid_write_reg(0x11, 0x3D);  // ModeReg: CRCPreset = 0x6363
 
@@ -126,37 +135,39 @@ void rfid_init(void) {
 }
 
 // Reads the 4-byte UID of a detected card.
-// Returns 1 on success (UID valid & BCC matched), 0 on failure.
+// Returns 1 on valid UID & matching checksum, 0 on failure
+// Places the UID bytes into uid_buffer
 uint8_t rfid_anticoll(uint8_t* uid_buffer) {
-  // 1. Reset CommandReg to Idle
+  // Set reader to idle and cancel any executing commands
   rfid_write_reg(0x01, 0x00);
 
-  // 2. Flush FIFO buffer
+  // Flush FIFO
   rfid_write_reg(0x0A, 0x80);
 
-  // 3. Clear interrupts
+  // Reset interrupts
   rfid_write_reg(0x04, 0x7F);
   rfid_write_reg(0x02, 0xA0);
 
-  // 4. Ensure full 8-bit frame alignment (TxLastBits = 0)
+  // Ensure correct frame alignment
   rfid_write_reg(0x0D, 0x00);
 
-  // 5. Write Anti-Collision payload bytes into FIFO
-  rfid_write_reg(0x09, 0x93);  // PICC_CMD_SEL_CL1
-  rfid_write_reg(0x09, 0x20);  // NVB (2 bytes)
+  // Load payload for anti-collision
+  rfid_write_reg(0x09, 0x93);
+  rfid_write_reg(0x09, 0x20);
 
-  // 6. Execute Transceive command
-  rfid_write_reg(0x01, 0x0C);
+  // Transceive, sending FIFO (REQA payload) data and listening for a reply.
+  // Arms the engine for this, but doesnt actually start transmitting yet.
+  rfid_write_reg(0x01, 0x0c);
 
-  // 7. Start transmission
-  rfid_write_reg(0x0D, 0x80);  // StartSend = 1
+  //  Starts the command.
+  rfid_write_reg(0x0D, 0x80);
 
-  // 8. Wait for card response or timeout
+  // Wait for card response or timeout
   int timeout = 2000;
   while (timeout > 0) {
-    print("coll_read");
     uint8_t irq = rfid_read_reg(0x04);
     if (irq & 0x21) break;  // RxIRq or TimerIRq
+    // Very short delay
     for (volatile int d = 0; d < 100; d++);
     timeout--;
   }
@@ -164,7 +175,8 @@ uint8_t rfid_anticoll(uint8_t* uid_buffer) {
   // Stop transmission
   rfid_write_reg(0x0D, 0x00);
 
-  // 9. Check if 5 response bytes were received in FIFO
+  // Check if 5 response bytes were received in FIFO
+  // Fewer than 5 bytes and we have an incomplete response
   uint8_t bytes_in_fifo = rfid_read_reg(0x0A);
   if (timeout > 0 && bytes_in_fifo >= 5) {
     // Read 4 UID bytes
@@ -172,60 +184,74 @@ uint8_t rfid_anticoll(uint8_t* uid_buffer) {
       uid_buffer[i] = rfid_read_reg(0x09);
     }
 
-    // Read 5th byte (BCC checksum)
+    // Read 5th byte containing checksum
     uint8_t bcc = rfid_read_reg(0x09);
 
-    // 10. Verify BCC checksum: UID[0] ^ UID[1] ^ UID[2] ^ UID[3] == BCC
+    // Calculate and compare checksum: UID[0] ^ UID[1] ^ UID[2] ^ UID[3] == BCC
     uint8_t calculated_bcc =
         uid_buffer[0] ^ uid_buffer[1] ^ uid_buffer[2] ^ uid_buffer[3];
     if (calculated_bcc == bcc) {
-      return 1;  // Success! UID is valid and verified.
+      return 1;  // ID is valid and verified.
     }
   }
 
   return 0;  // Failed to read UID or checksum error
 }
 
+// Request a card from the RFID reader
+// Returns an ATQA response byte if a card is detected, 0 otherwise
 uint8_t rfid_request(void) {
-  // Set commandreg idle
+  // Set reader to idle and cancel any executing commands
   rfid_write_reg(0x01, 0x00);
-  // Flush fifo
+
+  // Flushes FIFO removing any bytes left from earlier operations
   rfid_write_reg(0x0a, 0x80);
-  // Reset interrupt
+
+  // Clears old interrupt flags by writing 1s to ComIrqReg
   rfid_write_reg(0x04, 0x7F);
 
-  // Enable Rx and Idle interrupt bits
-  rfid_write_reg(0x02, 0xA0);
-
-  // Request byte
+  // Load REQA payload in FIFO. REQA requests a card to respond with ATQA.
   rfid_write_reg(0x09, 0x26);
-  // Transceive command
+
+  // Transceive, sending FIFO (REQA payload) data and listening for a reply.
+  // Arms the engine for this, but doesnt actually start transmitting yet.
   rfid_write_reg(0x01, 0x0c);
-  // Set startsend and bit frame to 7
+
+  //  Starts the command.
   rfid_write_reg(0x0D, 0x87);
-  // Start transmission
 
+  // Poll ComIrqReg until a response arrives, the reader's timer expires, or
+  // this software timeout (about 2 seconds) runs out.
   int timeout = 2000;
+  int received = 0;
   while (timeout > 0) {
-    uint8_t irq = rfid_read_reg(
-        0x04);  // Bit 5 is RxIRq (Data received), Bit 0 is TimerIRq (Timeout)
+    uint8_t irq = rfid_read_reg(0x04);
 
-    // Read success
-    if (irq & 0x20) break;
-    // Timeout
-    if (irq & 0x21) break;
+    if (irq & 0x20) {  // RxIRq: response data has arrived in the FIFO.
+      received = 1;
+      break;
+    }
+    if (irq & 0x01) {  // TimerIRq: the reader stopped waiting for a card.
+      break;
+    }
     delay(1);
     timeout--;
   }
-  // Stop transmission phase
-  rfid_write_reg(0x0D,
-                 0x00);  // 7\. Check if data was received (FIFOLevelReg &gt; 0)
+
+  // Stop the transceive operation.
+  rfid_write_reg(0x0D, 0x00);
+
+  // If no response was received, return 0 to indicate failure.
+  if (!received) {
+    return 0;
+  }
+
+  // Read how many bytes are in FIFO from LevelReg. If none, return 0, else
+  // return the first byte of the response.
   uint8_t bytes_in_fifo = rfid_read_reg(0x0A);
-  if (bytes_in_fifo >
-      0) {  // Read the actual response byte from FIFODataReg (0x09)
-    print("reached");
+  if (bytes_in_fifo > 0) {
     return rfid_read_reg(0x09);
   }
 
-  return 0x00;  // Return 0 if no card detected or timed out
+  return 0;  // No response byte was received.
 }

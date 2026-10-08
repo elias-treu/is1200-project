@@ -1,3 +1,5 @@
+// Implemented by Erik Forsberg, reviewed by Elias Treutiger
+
 #include <stdint.h>
 
 #include "timer.h"
