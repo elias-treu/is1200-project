@@ -103,6 +103,8 @@ void add_user() {
     } else {
       break;
     }
+
+    lcd_write_string("User added", 1000);
   }
 
   lcd_clear();
